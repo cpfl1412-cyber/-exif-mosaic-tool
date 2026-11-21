@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>사진 안전 정리 — EXIF 삭제 · 모자이크</title>
+<meta name="description" content="사진의 위치·기기 정보(EXIF)를 지우고 손가락으로 문질러 모자이크하는 도구. 모든 처리는 폰 안에서만 이루어지고 사진은 어디로도 전송되지 않습니다.">
+<meta name="theme-color" content="#0f1c2e">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; manifest-src 'self'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="사진 안전 정리">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <img class="brand-icon" src="./icons/icon-192.png" alt="" width="36" height="36">
+    <div class="brand-text">
+      <h1>사진 안전 정리</h1>
+      <p class="brand-sub">위치·기기 정보 지우고, 가릴 곳은 문질러서</p>
+    </div>
+  </div>
+  <p class="privacy-note">
+    <span class="lock" aria-hidden="true">🔒</span>
+    <span><strong>외부 전송 없이 폰 안에서만</strong> 안전하게 처리됩니다</span>
+  </p>
+</header>
+
+<main>
+  <!-- 1. 사진 선택 -->
+  <section class="pick" id="pickArea">
+    <label class="picker" for="fileInput" id="filePicker">
+      <span class="picker-icon" aria-hidden="true">🖼️</span>
+      <span class="picker-title" id="pickerTitle">사진 불러오기</span>
+      <span class="picker-sub" id="pickerSub">여러 장을 골라도 한 장씩 정리할 수 있어요</span>
+    </label>
+    <input id="fileInput" type="file" accept="image/*" multiple class="sr-only">
+
+    <ol class="how" id="howList">
+      <li><b>불러오기</b> 사진을 고르면 위치·기기 정보가 있으면 먼저 알려드려요</li>
+      <li><b>가리기</b> 손가락으로 문질러 모자이크, 되돌리기도 한 번에</li>
+      <li><b>깨끗하게 저장</b> 다시 그려서 저장 — 메타데이터 0건을 확인해 드려요</li>
+    </ol>
+  </section>
+
+  <!-- 2. 편집 -->
+  <section class="editor hidden" id="editor" aria-label="사진 편집">
+
+    <div class="badge" id="exifBadge" data-state="unknown">
+      <span class="badge-icon" id="badgeIcon" aria-hidden="true">⏳</span>
+      <div class="badge-body">
+        <strong id="badgeTitle">사진을 살펴보는 중…</strong>
+        <span class="badge-sub" id="badgeSub"></span>
+      </div>
+      <button class="badge-more hidden" id="badgeMore" type="button" aria-expanded="false">자세히</button>
+    </div>
+    <div class="badge-detail hidden" id="badgeDetail"></div>
+
+    <div class="thumbs hidden" id="thumbStrip" role="tablist" aria-label="불러온 사진"></div>
+
+    <div class="stage" id="stage">
+      <canvas id="canvas" aria-label="모자이크 편집 캔버스"></canvas>
+      <p class="stage-empty hidden" id="stageEmpty">사진을 불러와 주세요</p>
+    </div>
+
+    <p class="img-meta" id="imgMeta"></p>
+
+    <div class="tools">
+      <div class="tool-row">
+        <span class="tool-label" id="styleLabel">가리기 방식</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="styleLabel">
+          <button class="seg is-active" type="button" role="radio" aria-checked="true" data-style="mosaic">모자이크</button>
+          <button class="seg" type="button" role="radio" aria-checked="false" data-style="blur">블러</button>
+        </div>
+      </div>
+      <div class="tool-row">
+        <span class="tool-label" id="sizeLabel">브러시 크기</span>
+        <div class="segmented seg-3" role="radiogroup" aria-labelledby="sizeLabel">
+          <button class="seg" type="button" role="radio" aria-checked="false" data-size="small">작게</button>
+          <button class="seg is-active" type="button" role="radio" aria-checked="true" data-size="medium">보통</button>
+          <button class="seg" type="button" role="radio" aria-checked="false" data-size="large">크게</button>
+        </div>
+      </div>
+      <div class="tool-row tool-row-btns">
+        <button class="btn btn-soft" id="undoBtn" type="button" disabled>↩︎ 한 단계 되돌리기</button>
+        <button class="btn btn-soft" id="resetBtn" type="button" disabled>원본 초기화</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="saveBtn" type="button">
+        <span class="btn-ico" aria-hidden="true">💾</span> EXIF 지우고 저장
+      </button>
+      <button class="btn btn-outline hidden" id="shareBtn" type="button">
+        <span class="btn-ico" aria-hidden="true">📤</span> 공유하기
+      </button>
+    </div>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <p class="foot-note">
+    저장할 때 사진을 캔버스에 다시 그려 내보내기 때문에 <b>EXIF·GPS·촬영정보가 남지 않습니다.</b>
+    앱은 오프라인에서도 동작하며, 사진은 서버로 보내지 않습니다.
+  </p>
+</main>
+
+<noscript><p class="noscript">이 도구는 브라우저에서 사진을 직접 처리하므로 JavaScript가 필요합니다.</p></noscript>
+
+<script src="./app.js"></script>
+</body>
+</html>
