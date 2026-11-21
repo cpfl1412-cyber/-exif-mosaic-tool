@@ -2,7 +2,7 @@
 
 아이폰 사진을 **폰 밖으로 보내지 않고** 위치·기기 정보(EXIF)를 지우고, 가릴 곳을 손가락으로 문질러 모자이크/블러 처리하는 웹앱(PWA)입니다.
 
-- 배포: https://cpfl1412-cyber.github.io/exif-mosaic-tool/
+- 배포: https://cpfl1412-cyber.github.io/-exif-mosaic-tool/
 - 서버 없음 · 업로드 없음 · 로그인 없음. 모든 처리는 브라우저(기기) 안에서만.
 
 ## 기능
