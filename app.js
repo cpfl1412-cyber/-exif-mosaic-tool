@@ -547,7 +547,9 @@ function stamp(item, x, y, radius, style) {
     const sctx = sc.getContext('2d');
     sctx.clearRect(0, 0, w, h);
     sctx.drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
-    ctx.filter = 'blur(' + Math.max(2, Math.round(radius / 2.5)) + 'px)';
+    // 얇은 글씨도 남지 않도록 두 번 흐리게 한다
+    ctx.filter = 'blur(' + Math.max(3, Math.round(radius / 1.6)) + 'px)';
+    ctx.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
     ctx.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
     ctx.filter = 'none';
   } else {
