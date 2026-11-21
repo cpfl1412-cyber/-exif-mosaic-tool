@@ -567,7 +567,7 @@ function stamp(item, x, y, radius, style) {
     bctx.globalCompositeOperation = 'source-over';
     bctx.globalAlpha = 1;
     bctx.clearRect(0, 0, w, h);
-    bctx.filter = 'blur(' + Math.max(3, Math.round(radius / 1.7)) + 'px)';
+    bctx.filter = 'blur(' + Math.max(4, Math.round(radius * 0.9)) + 'px)';
     bctx.drawImage(sc, 0, 0, w, h, 0, 0, w, h);
     bctx.filter = 'none';
 
