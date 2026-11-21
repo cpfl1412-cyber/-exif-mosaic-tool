@@ -553,30 +553,24 @@ function stamp(item, x, y, radius, style) {
   ctx.clip();
 
   if (style === 'blur') {
-    const sc = getScratch(w, h);
-    const sctx = sc.getContext('2d');
-    sctx.globalCompositeOperation = 'source-over';
-    sctx.globalAlpha = 1;
-    sctx.filter = 'none';
-    sctx.clearRect(0, 0, w, h);
-    sctx.drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
-
-    // 흐린 사본을 만들어 가장자리를 부드럽게 페이드한 뒤 얹는다
+    // 원본을 크게 축소했다가 부드럽게 확대 = 흐리게 (투명 번짐 없이 꽉 채운다)
+    const bblock = Math.max(6, Math.round(radius / 2.2));
+    const bpc = getPixelCanvas(item, bblock);
     const bc = getScratch2(w, h);
     const bctx = bc.getContext('2d');
     bctx.globalCompositeOperation = 'source-over';
     bctx.globalAlpha = 1;
-    bctx.clearRect(0, 0, w, h);
-    bctx.filter = 'blur(' + Math.max(4, Math.round(radius * 1.4)) + 'px)';
-    bctx.drawImage(sc, 0, 0, w, h, 0, 0, w, h);
     bctx.filter = 'none';
+    bctx.clearRect(0, 0, w, h);
+    bctx.imageSmoothingEnabled = true;
+    bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(bpc, x0 / bblock, y0 / bblock, w / bblock, h / bblock, 0, 0, w, h);
 
+    // 가장자리만 살짝 부드럽게
     const cx = x - x0;
     const cy = y - y0;
-    // 가장자리만 살짝 풀어 준다(안쪽은 완전 불투명 → 가린 곳이 비치지 않게)
-    const grad = bctx.createRadialGradient(cx, cy, radius * 0.00, cx, cy, radius);
+    const grad = bctx.createRadialGradient(cx, cy, radius * 0.82, cx, cy, radius);
     grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(0.90, 'rgba(0,0,0,1)');
     grad.addColorStop(1, 'rgba(0,0,0,0)');
     bctx.globalCompositeOperation = 'destination-in';
     bctx.fillStyle = grad;
