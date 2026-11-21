@@ -509,6 +509,16 @@ function getScratch(w, h) {
   return scratch;
 }
 
+let scratch2 = null;
+function getScratch2(w, h) {
+  if (!scratch2) scratch2 = document.createElement('canvas');
+  if (scratch2.width < w || scratch2.height < h) {
+    scratch2.width = Math.max(scratch2.width, w);
+    scratch2.height = Math.max(scratch2.height, h);
+  }
+  return scratch2;
+}
+
 function getPixelCanvas(item, block) {
   const key = block;
   const cached = item.pixelCache.get(key);
@@ -545,12 +555,34 @@ function stamp(item, x, y, radius, style) {
   if (style === 'blur') {
     const sc = getScratch(w, h);
     const sctx = sc.getContext('2d');
+    sctx.globalCompositeOperation = 'source-over';
+    sctx.globalAlpha = 1;
+    sctx.filter = 'none';
     sctx.clearRect(0, 0, w, h);
     sctx.drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
-    // 얇은 글씨도 남지 않게 충분히 흐리게(한 번에 큰 반경)
-    ctx.filter = 'blur(' + Math.max(3, Math.round(radius / 1.7)) + 'px)';
-    ctx.drawImage(sc, 0, 0, w, h, x0, y0, w, h);
-    ctx.filter = 'none';
+
+    // 흐린 사본을 만들어 가장자리를 부드럽게 페이드한 뒤 얹는다
+    const bc = getScratch2(w, h);
+    const bctx = bc.getContext('2d');
+    bctx.globalCompositeOperation = 'source-over';
+    bctx.globalAlpha = 1;
+    bctx.clearRect(0, 0, w, h);
+    bctx.filter = 'blur(' + Math.max(3, Math.round(radius / 1.7)) + 'px)';
+    bctx.drawImage(sc, 0, 0, w, h, 0, 0, w, h);
+    bctx.filter = 'none';
+
+    const cx = x - x0;
+    const cy = y - y0;
+    const grad = bctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius * 1.02);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.75, 'rgba(0,0,0,0.92)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    bctx.globalCompositeOperation = 'destination-in';
+    bctx.fillStyle = grad;
+    bctx.fillRect(0, 0, w, h);
+    bctx.globalCompositeOperation = 'source-over';
+
+    ctx.drawImage(bc, 0, 0, w, h, x0, y0, w, h);
   } else {
     const pc = getPixelCanvas(item, block);
     ctx.imageSmoothingEnabled = false;
