@@ -1,7 +1,9 @@
 /* 사진 안전 정리 — 오프라인 캐시
- * 사진은 절대 네트워크로 나가지 않는다. 여기서는 앱 파일만 캐시한다.
+ * 사진은 절대 네트워크로 나가지 않는다. 여기서는 앱 파일만 다룬다.
+ * 업데이트가 바로 반영되도록 같은 출처 파일은 네트워크 우선,
+ * 오프라인일 때만 캐시로 응답한다.
  */
-const CACHE = 'exif-mosaic-v1';
+const CACHE = 'exif-mosaic-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -17,7 +19,11 @@ const ASSETS = [
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE).then(function (cache) {
-      return cache.addAll(ASSETS).catch(function () { /* 일부 실패해도 설치는 계속 */ });
+      return Promise.all(ASSETS.map(function (url) {
+        return fetch(url, { cache: 'no-store' })
+          .then(function (res) { if (res && res.ok) return cache.put(url, res); })
+          .catch(function () { /* 오프라인 설치 등은 무시 */ });
+      }));
     }).then(function () { return self.skipWaiting(); })
   );
 });
@@ -43,18 +49,23 @@ self.addEventListener('fetch', function (event) {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(request, { ignoreSearch: true }).then(function (hit) {
-      if (hit) return hit;
-      return fetch(request).then(function (response) {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const copy = response.clone();
-          caches.open(CACHE).then(function (cache) { cache.put(request, copy); });
+    (async function () {
+      const cache = await caches.open(CACHE);
+      try {
+        const fresh = await fetch(request, { cache: 'no-store' });
+        if (fresh && fresh.ok && fresh.type === 'basic') {
+          cache.put(request, fresh.clone()).catch(function () {});
         }
-        return response;
-      }).catch(function () {
-        if (request.mode === 'navigate') return caches.match('./index.html');
+        return fresh;
+      } catch (err) {
+        const hit = await cache.match(request, { ignoreSearch: true });
+        if (hit) return hit;
+        if (request.mode === 'navigate') {
+          const shell = await cache.match('./index.html');
+          if (shell) return shell;
+        }
         return Response.error();
-      });
-    })
+      }
+    })()
   );
 });
