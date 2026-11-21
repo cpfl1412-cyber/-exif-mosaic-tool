@@ -323,6 +323,8 @@ async function createItem(file) {
     scaled: scale < 0.999,
     strokes: [],
     pixelCache: new Map(),
+    version: 0,
+    prepared: null,
     done: false
   };
 }
@@ -339,10 +341,12 @@ async function addFiles(fileList) {
   setStatus(files.length > 1 ? files.length + '장을 여는 중…' : '사진을 여는 중…', 'busy');
 
   let added = 0;
+  let firstAdded = -1;
   const failed = [];
   for (const file of files) {
     try {
       const item = await createItem(file);
+      if (firstAdded < 0) firstAdded = state.items.length;
       state.items.push(item);
       added++;
     } catch (err) {
@@ -359,6 +363,7 @@ async function addFiles(fileList) {
   els.pickArea.classList.add('compact');
 
   if (state.index < 0) selectItem(0);
+  else if (firstAdded >= 0) selectItem(firstAdded);
   else renderThumbs();
 
   if (failed.length) {
@@ -392,6 +397,9 @@ function selectItem(index) {
   els.editor.classList.remove('hidden');
   els.pickArea.classList.add('compact');
   els.saveBtn.disabled = false;
+
+  item.prepared = null;
+  schedulePrepare(item);
 
   renderBadge(item);
   renderThumbs();
@@ -646,6 +654,7 @@ function onPointerUp(ev) {
     item.done = false;
     renderThumbs();
     updateUndo();
+    bumpVersion(item);
   }
 }
 
@@ -697,6 +706,7 @@ els.undoBtn.addEventListener('click', function () {
   item.strokes.pop();
   item.done = false;
   selectItem(state.index);
+  bumpVersion(item);
   setStatus('한 단계 되돌렸어요.', 'ok');
 });
 
@@ -706,6 +716,7 @@ els.resetBtn.addEventListener('click', function () {
   item.strokes = [];
   item.done = false;
   selectItem(state.index);
+  bumpVersion(item);
   setStatus('원본으로 되돌렸어요.', 'ok');
 });
 
@@ -763,6 +774,45 @@ async function makeCleanImage(item) {
   return { blob: blob, check: check, leftovers: leftovers };
 }
 
+/*
+ * 공유는 사파리에서 "탭한 그 순간"에 navigator.share를 불러야 한다.
+ * 그래서 편집이 멈추면 미리 EXIF 제거본을 만들어 두고, 공유 버튼에서는
+ * 기다림 없이 그 파일을 넘긴다.
+ */
+let prepareTimer = null;
+
+function bumpVersion(item) {
+  item.version = (item.version || 0) + 1;
+  item.prepared = null;
+  schedulePrepare(item);
+}
+
+function schedulePrepare(item) {
+  if (prepareTimer) clearTimeout(prepareTimer);
+  prepareTimer = setTimeout(function () {
+    prepareTimer = null;
+    prepare(item);
+  }, 350);
+}
+
+async function prepare(item) {
+  if (current() !== item || state.drawing) return;
+  const version = item.version || 0;
+  if (item.prepared && item.prepared.version === version) return;
+  try {
+    const result = await makeCleanImage(item);
+    if (current() !== item || (item.version || 0) !== version) return;
+    item.prepared = {
+      version: version,
+      blob: result.blob,
+      check: result.check,
+      leftovers: result.leftovers
+    };
+  } catch (err) {
+    /* 준비 실패는 버튼을 눌렀을 때 다시 시도한다 */
+  }
+}
+
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -783,13 +833,19 @@ function markDone(item) {
   renderThumbs();
 }
 
+function freshResult(item) {
+  const version = item.version || 0;
+  if (item.prepared && item.prepared.version === version) return item.prepared;
+  return null;
+}
+
 els.saveBtn.addEventListener('click', async function () {
   const item = current();
   if (!item) return;
   els.saveBtn.disabled = true;
   setStatus('메타데이터를 지워 저장하는 중…', 'busy');
   try {
-    const result = await makeCleanImage(item);
+    const result = freshResult(item) || await makeCleanImage(item);
     const name = outputName(item);
     download(result.blob, name);
 
@@ -812,32 +868,49 @@ if (typeof navigator.share === 'function') {
   els.shareBtn.classList.remove('hidden');
 }
 
+async function shareResult(item, result) {
+  const file = new File([result.blob], outputName(item), { type: 'image/jpeg' });
+  if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+    download(result.blob, outputName(item));
+    setStatus('이 브라우저는 파일 공유를 지원하지 않아 다운로드로 저장했어요.', 'err');
+    return;
+  }
+  // 사용자 탭 직후(await 전)에 호출되어야 아이폰 공유 시트가 열린다.
+  await navigator.share({ files: [file], title: '사진' });
+  markDone(item);
+  if (result.leftovers.length) {
+    setStatus('공유했지만 ' + result.leftovers.join(', ') + ' 항목이 남았습니다.', 'err');
+  } else {
+    setStatus('공유 완료 · 위치·기기 정보 0건 확인', 'ok');
+  }
+}
+
 els.shareBtn.addEventListener('click', async function () {
   const item = current();
   if (!item) return;
+
+  const ready = freshResult(item);
+  if (ready) {
+    els.shareBtn.disabled = true;
+    try {
+      await shareResult(item, ready);
+    } catch (err) {
+      if (err && err.name === 'AbortError') setStatus('공유를 취소했어요.', '');
+      else setStatus('공유에 실패했어요. 저장 버튼을 이용해 주세요.', 'err');
+    } finally {
+      els.shareBtn.disabled = false;
+    }
+    return;
+  }
+
+  // 아직 준비 전이면: 만들어 두고 한 번 더 눌러 달라고 안내
   els.shareBtn.disabled = true;
   setStatus('공유할 사진을 준비하는 중…', 'busy');
   try {
-    const result = await makeCleanImage(item);
-    const file = new File([result.blob], outputName(item), { type: 'image/jpeg' });
-    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
-      download(result.blob, outputName(item));
-      setStatus('이 브라우저는 파일 공유를 지원하지 않아 다운로드로 저장했어요.', 'err');
-      return;
-    }
-    await navigator.share({ files: [file], title: '사진' });
-    markDone(item);
-    if (result.leftovers.length) {
-      setStatus('공유했지만 ' + result.leftovers.join(', ') + ' 항목이 남았습니다.', 'err');
-    } else {
-      setStatus('공유 완료 · 위치·기기 정보 0건 확인', 'ok');
-    }
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      setStatus('공유를 취소했어요.', '');
-    } else {
-      setStatus('공유에 실패했어요. 저장 버튼을 이용해 주세요.', 'err');
-    }
+    await prepare(item);
+    const after = freshResult(item);
+    if (after) setStatus('준비됐어요. 공유 버튼을 한 번 더 눌러 주세요.', 'ok');
+    else setStatus('공유 준비에 실패했어요. 저장 버튼을 이용해 주세요.', 'err');
   } finally {
     els.shareBtn.disabled = false;
   }
