@@ -567,15 +567,16 @@ function stamp(item, x, y, radius, style) {
     bctx.globalCompositeOperation = 'source-over';
     bctx.globalAlpha = 1;
     bctx.clearRect(0, 0, w, h);
-    bctx.filter = 'blur(' + Math.max(4, Math.round(radius * 0.9)) + 'px)';
+    bctx.filter = 'blur(' + Math.max(4, Math.round(radius * 1.4)) + 'px)';
     bctx.drawImage(sc, 0, 0, w, h, 0, 0, w, h);
     bctx.filter = 'none';
 
     const cx = x - x0;
     const cy = y - y0;
-    const grad = bctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius * 1.02);
+    // 가장자리만 살짝 풀어 준다(안쪽은 완전 불투명 → 가린 곳이 비치지 않게)
+    const grad = bctx.createRadialGradient(cx, cy, radius * 0.00, cx, cy, radius);
     grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(0.75, 'rgba(0,0,0,0.92)');
+    grad.addColorStop(0.90, 'rgba(0,0,0,1)');
     grad.addColorStop(1, 'rgba(0,0,0,0)');
     bctx.globalCompositeOperation = 'destination-in';
     bctx.fillStyle = grad;
@@ -597,7 +598,7 @@ function paintSegment(item, a, b, radius, style) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const spacing = Math.max(2, radius * 0.4);
+  const spacing = Math.max(2, radius * 0.3);
   const steps = Math.max(1, Math.min(160, Math.ceil(dist / spacing)));
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
